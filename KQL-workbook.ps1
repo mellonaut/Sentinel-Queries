@@ -89,7 +89,7 @@ $mdeQuery3.Results
 
 
 $mdeQuery4 = 'DeviceProcessEvents 
-| where Timestamp > ago(7d)
+| where Timestamp > ago(30d)
 // Pivoting on parents or grand parents
 and (((InitiatingProcessParentFileName in("w3wp.exe", "beasvc.exe",
 "httpd.exe") or InitiatingProcessParentFileName startswith "tomcat")
@@ -146,7 +146,7 @@ $mdeQuery5.Results
 # // Query for processes that accessed more than 10 IP addresses over port 445
 $mdeQuery6 = '
 DeviceNetworkEvents
-| where RemotePort == 445 and Timestamp > ago(7d) 
+| where RemotePort == 445 and Timestamp > ago(30d) 
     // Exclude Kernel processes, as they are too noisy in this query
     and InitiatingProcessId !in (0, 4)
 | summarize RemoteIPCount=dcount(RemoteIP) by DeviceName, InitiatingProcessFileName, InitiatingProcessId, InitiatingProcessCreationTime
