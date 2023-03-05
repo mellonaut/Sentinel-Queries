@@ -164,3 +164,40 @@ and RemoteUrl contains partialRemoteUrlToDetect
 | top 100 by Timestamp desc"
 $mdeQuery7 = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceID -Query $mdeQuery7
 $mdeQuery7.Results
+
+# jscriop[t file creation]
+mdeQuery8 = 'DeviceFileEvents 
+| where Timestamp > ago(30d)
+| where FileName endswith ".jse"'
+$mdeQuery8 = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceID -Query $mdeQuery8
+$mdeQuery8.Results
+
+# email link open then smartscreen warning
+$mdeQuery8 = 'let smartscreenAppWarnings =
+// Query for SmartScreen warnings of unknown executed applications
+    DeviceEvents
+    | where ActionType == "SmartScreenAppWarning"
+    | project WarnTime=Timestamp, DeviceName, WarnedFileName=FileName, WarnedSHA1=SHA1, ActivityId=extractjson("$.ActivityId", AdditionalFields, typeof(string))
+    // Select only warnings that the user has decided to ignore and has executed the app.
+    | join kind=leftsemi (
+            DeviceEvents
+            | where ActionType == "SmartScreenUserOverride"
+            | project DeviceName, ActivityId=extractjson("$.ActivityId", AdditionalFields, typeof(string)))
+         on DeviceName, ActivityId
+	| project-away ActivityId;
+// Query for links opened from outlook, that are close in time to a SmartScreen warning
+let emailLinksNearSmartScreenWarnings =
+    DeviceEvents
+    | where ActionType == "BrowserLaunchedToOpenUrl" and isnotempty(RemoteUrl) and InitiatingProcessFileName =~ "outlook.exe"
+    | extend WasOutlookSafeLink=(tostring(parse_url(RemoteUrl).Host) endswith "safelinks.protection.outlook.com")
+    | project DeviceName, MailLinkTime=Timestamp,
+        MailLink=iff(WasOutlookSafeLink, url_decode(tostring(parse_url(RemoteUrl)["Query Parameters"]["url"])), RemoteUrl)
+    | join kind=inner smartscreenAppWarnings on DeviceName | where (WarnTime-MailLinkTime) between (0min..4min);
+// Add the browser download event to tie in all the dots
+DeviceFileEvents
+| where isnotempty(FileOriginUrl) and InitiatingProcessFileName in~ ("chrome.exe", "firefox.exe", "edge.exe", "brave.exe", "browser_broker.exe")
+| project FileName, FileOriginUrl, FileOriginReferrerUrl, DeviceName, Timestamp, SHA1
+| join kind=inner emailLinksNearSmartScreenWarnings on DeviceName
+| where (Timestamp-MailLinkTime) between (0min..3min) and (WarnTime-Timestamp) between (0min..1min)
+| project FileName, MailLink, FileOriginUrl, FileOriginReferrerUrl, WarnedFileName, DeviceName, SHA1, WarnedSHA1, Timestamp
+| distinct *'
