@@ -33,11 +33,11 @@ $kqlQuery3 = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceID -Query 
 $kqlQuery3.Results
 
 # network logins for Local accounts in M365 Defender 
-$mdeQuery1 = 'DeviceLogonEvents
+$mdeQuery1 = "DeviceLogonEvents
 | where Timestamp > ago(30d)
-| where AccountDomain == DeviceName and isnotempty( RemoteIP) and RemoteIP !in ('::1','-', '0.0.0.0') and RemoteIP !startswith "127."
+| where AccountDomain == DeviceName and isnotempty( RemoteIP) and RemoteIP !in '("::1","-", "0.0.0.0")' and RemoteIP !startswith "127."
 | summarize LogonAttempts = count(), DistinctMachines = dcount(DeviceId), Successes = countif(ActionType == 'Success'), RemoteDeviceName = any(RemoteDeviceName)  by RemoteIP, Protocol, LogonType, AccountName
-| order by Successes desc, LogonAttempts desc'
+| order by Successes desc, LogonAttempts desc"
 $mdeQuery1 = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceID -Query $mdeQuery1
 $mdeQuery1.Results
 
@@ -166,26 +166,23 @@ $mdeQuery7 = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceID -Query 
 $mdeQuery7.Results
 
 # jscriop[t file creation]
-mdeQuery8 = 'DeviceFileEvents 
+$mdeQuery8 = 'DeviceFileEvents 
 | where Timestamp > ago(30d)
 | where FileName endswith ".jse"'
 $mdeQuery8 = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceID -Query $mdeQuery8
 $mdeQuery8.Results
 
 # email link open then smartscreen warning
-$mdeQuery8 = 'let smartscreenAppWarnings =
-// Query for SmartScreen warnings of unknown executed applications
+$mdeQuery9 = 'let smartscreenAppWarnings =
     DeviceEvents
     | where ActionType == "SmartScreenAppWarning"
     | project WarnTime=Timestamp, DeviceName, WarnedFileName=FileName, WarnedSHA1=SHA1, ActivityId=extractjson("$.ActivityId", AdditionalFields, typeof(string))
-    // Select only warnings that the user has decided to ignore and has executed the app.
     | join kind=leftsemi (
             DeviceEvents
             | where ActionType == "SmartScreenUserOverride"
             | project DeviceName, ActivityId=extractjson("$.ActivityId", AdditionalFields, typeof(string)))
          on DeviceName, ActivityId
 	| project-away ActivityId;
-// Query for links opened from outlook, that are close in time to a SmartScreen warning
 let emailLinksNearSmartScreenWarnings =
     DeviceEvents
     | where ActionType == "BrowserLaunchedToOpenUrl" and isnotempty(RemoteUrl) and InitiatingProcessFileName =~ "outlook.exe"
@@ -193,7 +190,6 @@ let emailLinksNearSmartScreenWarnings =
     | project DeviceName, MailLinkTime=Timestamp,
         MailLink=iff(WasOutlookSafeLink, url_decode(tostring(parse_url(RemoteUrl)["Query Parameters"]["url"])), RemoteUrl)
     | join kind=inner smartscreenAppWarnings on DeviceName | where (WarnTime-MailLinkTime) between (0min..4min);
-// Add the browser download event to tie in all the dots
 DeviceFileEvents
 | where isnotempty(FileOriginUrl) and InitiatingProcessFileName in~ ("chrome.exe", "firefox.exe", "edge.exe", "brave.exe", "browser_broker.exe")
 | project FileName, FileOriginUrl, FileOriginReferrerUrl, DeviceName, Timestamp, SHA1
@@ -201,3 +197,5 @@ DeviceFileEvents
 | where (Timestamp-MailLinkTime) between (0min..3min) and (WarnTime-Timestamp) between (0min..1min)
 | project FileName, MailLink, FileOriginUrl, FileOriginReferrerUrl, WarnedFileName, DeviceName, SHA1, WarnedSHA1, Timestamp
 | distinct *'
+$mdeQuery9 = Invoke-AzOperationalInsightsQuery -WorkspaceId $WorkspaceID -Query $mdeQuery9
+$mdeQuery9.Results
